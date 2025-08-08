@@ -1,21 +1,21 @@
 # Ignore everything
 *
 
-# Keep this .gitignore file
+# Keep .gitignore itself
 !.gitignore
 
-# Keep only specific indicator files
-!MQL5/Indicators/Macharm_Squeezeline.mq5
-!MQL5/Indicators/LargeTrader_Proxy.mq5
-!MQL5/Indicators/COT_Proxy_Index.mq5
-!MQL5/Indicators/Commercial_Proxy.mq5
-!MQL5/Indicators/ATR_SS.mq5
-!MQL5/Indicators/ADX_SS.mq5
-!MQL5/Indicators/Macharm_Waterline.mq5
-!MQL5/Indicators/Macharm_Waterline_v2.mq5
-!MQL5/Indicators/MarketStructure.mq5
-!MQL5/Indicators/momentum_burst.mq5
-!MQL5/Indicators/ProGo.mq5
-!MQL5/Indicators/weekly_volatility_breakouts.mq5
-!MQL5/Indicators/Will_Blast_Off.mq5
+# Keep only selected Indicators
+!Indicators/Macharm_Squeezeline.mq5
+!Indicators/LargeTrader_Proxy.mq5
+!Indicators/COT_Proxy_Index.mq5
+!Indicators/Commercial_Proxy.mq5
+!Indicators/ATR_SS.mq5
+!Indicators/ADX_SS.mq5
+!Indicators/Macharm_Waterline.mq5
+!Indicators/Macharm_Waterline_v2.mq5
+!Indicators/MarketStructure.mq5
+!Indicators/momentum_burst.mq5
+!Indicators/ProGo.mq5
+!Indicators/weekly_volatility_breakouts.mq5
+!Indicators/Will_Blast_Off.mq5
 
