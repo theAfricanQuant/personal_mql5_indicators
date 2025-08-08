@@ -1,21 +1,34 @@
-# Ignore everything
+# Ignore everything by default
 *
 
-# Keep .gitignore itself
+# But don't ignore this .gitignore file
 !.gitignore
 
-# Keep only selected Indicators
-!Indicators/Macharm_Squeezeline.mq5
-!Indicators/LargeTrader_Proxy.mq5
-!Indicators/COT_Proxy_Index.mq5
-!Indicators/Commercial_Proxy.mq5
-!Indicators/ATR_SS.mq5
+# Don't ignore the README file
+!README.md
+
+# --- INDICATORS ---
+# Un-ignore the 'Indicators' directory itself, so we can see inside it
+!Indicators/
+
+# Now, ignore everything inside the 'Indicators' directory...
+Indicators/*
+
+# ...EXCEPT for the specific .mq5 source files you want to track.
+# It's best practice to NOT track the compiled .ex5 files.
 !Indicators/ADX_SS.mq5
-!Indicators/Macharm_Waterline.mq5
+!Indicators/ATR_SS.mq5
+!Indicators/Commercial_Proxy.mq5
+!Indicators/COT_Proxy_Index.mq5
+!Indicators/LargeTrader_Proxy.mq5
+!Indicators/Macharm_Squeezeline.mq5
 !Indicators/Macharm_Waterline_v2.mq5
+!Indicators/Macharm_Waterline.mq5
 !Indicators/MarketStructure.mq5
 !Indicators/momentum_burst.mq5
 !Indicators/ProGo.mq5
 !Indicators/weekly_volatility_breakouts.mq5
 !Indicators/Will_Blast_Off.mq5
+
+
 
