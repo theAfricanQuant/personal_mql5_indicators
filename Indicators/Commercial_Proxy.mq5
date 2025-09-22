@@ -142,7 +142,7 @@ int OnCalculate(const int rates_total,
    for(int i = start; i < rates_total; i++)
    {
       //--- Calculate Open - Close difference
-      Open_Close_Diff[i] = open[i] - close[i];
+      Open_Close_Diff[i] = close[i] - open[i];
       
       //--- Calculate Range (High - Low)
       Range_Values[i] = high[i] - low[i];

@@ -11,6 +11,7 @@
 #property indicator_buffers 4
 #property indicator_plots   4
 
+
 //--- plot Short Term Highs
 #property indicator_label1  "STH"
 #property indicator_type1   DRAW_ARROW
@@ -120,6 +121,15 @@ int OnCalculate(const int rates_total,
                 const long &volume[],
                 const int &spread[])
 {
+    // Set all arrays as series for consistent indexing
+    ArraySetAsSeries(time, true);
+    ArraySetAsSeries(high, true);
+    ArraySetAsSeries(low, true);
+    ArraySetAsSeries(HighArrowBuffer, true);
+    ArraySetAsSeries(LowArrowBuffer, true);
+    ArraySetAsSeries(IntHighArrowBuffer, true);
+    ArraySetAsSeries(IntLowArrowBuffer, true);
+
     //--- check for minimum bars
     if(rates_total < InpSwingStrength * 2 + 5) {
         if(InpShowDebug) 
@@ -127,9 +137,9 @@ int OnCalculate(const int rates_total,
         return(0);
     }
     
-    //--- Calculate start position
-    int start = InpSwingStrength + 1;
-    int limit = rates_total - InpSwingStrength - 1;
+    //--- Calculate start position (corrected for time series)
+    int start = InpSwingStrength;
+    int end = rates_total - InpSwingStrength;
     
     if(prev_calculated == 0) {
         // Full recalculation
@@ -152,7 +162,7 @@ int OnCalculate(const int rates_total,
         if(InpShowDebug) 
             Print("Full recalculation starting for ", rates_total, " bars");
     } else {
-        start = MathMax(start, prev_calculated - 20);
+        start = MathMax(start, rates_total - prev_calculated - 20);
     }
     
     // Limit processing based on InpBarsBack
@@ -160,8 +170,8 @@ int OnCalculate(const int rates_total,
         start = MathMax(start, rates_total - InpBarsBack);
     }
     
-    //--- Process each bar for swing points
-    for(int i = start; i < limit; i++) {
+    //--- Process from oldest to newest (right to left on chart)
+    for(int i = end - 1; i >= start; i--) {
         // Check for swing points
         if(IsSwingHigh(high, i, InpSwingStrength)) {
             ProcessPotentialSTH(i, high[i], low[i], time[i]);
@@ -172,14 +182,14 @@ int OnCalculate(const int rates_total,
         }
     }
     
-    //--- Check confirmations
-    CheckConfirmations(high, low, rates_total);
+    //--- Check confirmations (pass time array)
+    CheckConfirmations(high, low, time, rates_total);
     
     //--- Process intermediate term points
     ProcessIntermediateTermPoints();
     
-    //--- Update display
-    UpdateArrows();
+    //--- Update display (pass time array)
+    UpdateArrows(time, rates_total);
     
     if(InpShowDebug && prev_calculated == 0) {
         Print("Calculation complete. STH count: ", sthCount, ", STL count: ", stlCount, 
@@ -194,22 +204,25 @@ int OnCalculate(const int rates_total,
 //+------------------------------------------------------------------+
 bool IsSwingHigh(const double &high[], int bar, int strength)
 {
+    // Remember: with ArraySetAsSeries(true):
+    // bar 0 = current/newest
+    // increasing bar = older bars
     double currentHigh = high[bar];
     
-    // Check bars before
+    // Check newer bars (lower indices)
     for(int i = 1; i <= strength; i++) {
-        if(bar - i < 0 || high[bar - i] >= currentHigh)
-            return false;
+        int idx = bar - i;
+        if(idx < 0) return false;
+        if(high[idx] >= currentHigh) return false;
     }
     
-    // Check bars after
+    // Check older bars (higher indices)
     for(int i = 1; i <= strength; i++) {
-        if(bar + i >= ArraySize(high) || high[bar + i] >= currentHigh)
-            return false;
+        int idx = bar + i;
+        if(idx >= ArraySize(high)) return false;
+        if(high[idx] >= currentHigh) return false;
     }
     
-    if(InpShowDebug)
-        Print("Swing High detected at bar ", bar, " price ", currentHigh);
     return true;
 }
 
@@ -220,35 +233,36 @@ bool IsSwingLow(const double &low[], int bar, int strength)
 {
     double currentLow = low[bar];
     
-    // Check bars before
+    // Check newer bars (lower indices)
     for(int i = 1; i <= strength; i++) {
-        if(bar - i < 0 || low[bar - i] <= currentLow)
-            return false;
+        int idx = bar - i;
+        if(idx < 0) return false;
+        if(low[idx] <= currentLow) return false;
     }
     
-    // Check bars after
+    // Check older bars (higher indices)
     for(int i = 1; i <= strength; i++) {
-        if(bar + i >= ArraySize(low) || low[bar + i] <= currentLow)
-            return false;
+        int idx = bar + i;
+        if(idx >= ArraySize(low)) return false;
+        if(low[idx] <= currentLow) return false;
     }
     
-    if(InpShowDebug)
-        Print("Swing Low detected at bar ", bar, " price ", currentLow);
     return true;
 }
 
 //+------------------------------------------------------------------+
-//| Check confirmations for swing points                            |
+//| Check confirmations using time mapping                          |
 //+------------------------------------------------------------------+
-void CheckConfirmations(const double &high[], const double &low[], int rates_total)
+void CheckConfirmations(const double &high[], const double &low[], const datetime &time[], int rates_total)
 {
     // Check STH confirmations
     for(int i = 0; i < sthCount; i++) {
         if(!allSTH[i].isConfirmed && allSTH[i].isValid) {
-            if(rates_total - allSTH[i].bar >= InpConfirmationBars) {
+            int currentBarIndex = FindBarByTime(time, rates_total, allSTH[i].time);
+            if(currentBarIndex != -1 && currentBarIndex >= InpConfirmationBars) {
                 allSTH[i].isConfirmed = true;
                 if(InpShowDebug)
-                    Print("STH confirmed at bar ", allSTH[i].bar);
+                    Print("STH confirmed at time ", allSTH[i].time, " current index ", currentBarIndex);
             }
         }
     }
@@ -256,10 +270,11 @@ void CheckConfirmations(const double &high[], const double &low[], int rates_tot
     // Check STL confirmations
     for(int i = 0; i < stlCount; i++) {
         if(!allSTL[i].isConfirmed && allSTL[i].isValid) {
-            if(rates_total - allSTL[i].bar >= InpConfirmationBars) {
+            int currentBarIndex = FindBarByTime(time, rates_total, allSTL[i].time);
+            if(currentBarIndex != -1 && currentBarIndex >= InpConfirmationBars) {
                 allSTL[i].isConfirmed = true;
                 if(InpShowDebug)
-                    Print("STL confirmed at bar ", allSTL[i].bar);
+                    Print("STL confirmed at time ", allSTL[i].time, " current index ", currentBarIndex);
             }
         }
     }
@@ -271,20 +286,30 @@ void CheckConfirmations(const double &high[], const double &low[], int rates_tot
 void ProcessPotentialSTH(int bar, double highPrice, double lowPrice, datetime t)
 {
     if(InpAlternatingMode) {
-        if(!expectingSTL) { // We're looking for STH
-            if(sthCount == 0 || bar > allSTH[sthCount-1].bar) {
-                AddSTH(bar, highPrice, lowPrice, t);
-                expectingSTL = true; // Now expect STL
-            } else if(sthCount > 0 && highPrice > allSTH[sthCount-1].price) {
-                // Update existing STH with higher price
+        // In alternating mode, we need to track the sequence properly
+        if(sthCount == 0) {
+            // First STH, always add
+            AddSTH(bar, highPrice, lowPrice, t);
+            expectingSTL = true;
+            if(InpShowDebug) Print("First STH added, now expecting STL");
+        } else if(expectingSTL) {
+            // We're expecting STL but found STH - update if it's better
+            if(highPrice > allSTH[sthCount-1].price) {
                 allSTH[sthCount-1].bar = bar;
                 allSTH[sthCount-1].price = highPrice;
                 allSTH[sthCount-1].confirmationLevel = lowPrice;
                 allSTH[sthCount-1].time = t;
                 allSTH[sthCount-1].isConfirmed = false;
+                if(InpShowDebug) Print("Updated STH with higher price: ", highPrice);
             }
+        } else {
+            // We found STH when expecting STH (after STL) - add new one
+            AddSTH(bar, highPrice, lowPrice, t);
+            expectingSTL = true;
+            if(InpShowDebug) Print("New STH after STL, now expecting STL");
         }
     } else {
+        // Non-alternating mode: add all swing highs
         AddSTH(bar, highPrice, lowPrice, t);
     }
 }
@@ -295,20 +320,33 @@ void ProcessPotentialSTH(int bar, double highPrice, double lowPrice, datetime t)
 void ProcessPotentialSTL(int bar, double lowPrice, double highPrice, datetime t)
 {
     if(InpAlternatingMode) {
-        if(expectingSTL) { // We're looking for STL
-            if(stlCount == 0 || bar > allSTL[stlCount-1].bar) {
-                AddSTL(bar, lowPrice, highPrice, t);
-                expectingSTL = false; // Now expect STH
-            } else if(stlCount > 0 && lowPrice < allSTL[stlCount-1].price) {
-                // Update existing STL with lower price
+        // In alternating mode, keep logic consistent with STH processing
+        if(stlCount == 0 && expectingSTL) {
+            // First STL after a STH
+            AddSTL(bar, lowPrice, highPrice, t);
+            expectingSTL = false;
+            if(InpShowDebug) Print("First STL added, now expecting STH");
+        }
+        else if(expectingSTL) {
+            // We are expecting an STL (after the last STH) -> add new one
+            AddSTL(bar, lowPrice, highPrice, t);
+            expectingSTL = false;
+            if(InpShowDebug) Print("New STL after STH, now expecting STH");
+        }
+        else {
+            // We are NOT expecting an STL (we expect a STH). If we still find an STL,
+            // allow updating the most recent STL if this one is "better" (lower)
+            if(stlCount > 0 && lowPrice < allSTL[stlCount-1].price) {
                 allSTL[stlCount-1].bar = bar;
                 allSTL[stlCount-1].price = lowPrice;
                 allSTL[stlCount-1].confirmationLevel = highPrice;
                 allSTL[stlCount-1].time = t;
                 allSTL[stlCount-1].isConfirmed = false;
+                if(InpShowDebug) Print("Updated STL with lower price: ", lowPrice);
             }
         }
     } else {
+        // Non-alternating mode: add all swing lows
         AddSTL(bar, lowPrice, highPrice, t);
     }
 }
@@ -408,53 +446,99 @@ void AddITL(int bar, double price, datetime t)
 }
 
 //+------------------------------------------------------------------+
-//| Update arrow display                                             |
+//| Update arrow display using time mapping                         |
 //+------------------------------------------------------------------+
-void UpdateArrows()
+void UpdateArrows(const datetime &timeArr[], int rates_total)
 {
-    // Clear all arrows
+    ArraySetAsSeries(HighArrowBuffer, true);
+    ArraySetAsSeries(LowArrowBuffer, true);
+    ArraySetAsSeries(IntHighArrowBuffer, true);
+    ArraySetAsSeries(IntLowArrowBuffer, true);
+
     ArrayInitialize(HighArrowBuffer, EMPTY_VALUE);
     ArrayInitialize(LowArrowBuffer, EMPTY_VALUE);
     ArrayInitialize(IntHighArrowBuffer, EMPTY_VALUE);
     ArrayInitialize(IntLowArrowBuffer, EMPTY_VALUE);
-    
-    // Display STH arrows
+
+    // Display STH arrows using current time mapping (with fallback to stored bar index)
     for(int i = 0; i < sthCount; i++) {
         if(allSTH[i].isValid && (allSTH[i].isConfirmed || InpShowUnconfirmed)) {
-            int bufferSize = ArraySize(HighArrowBuffer);
-            if(allSTH[i].bar >= 0 && allSTH[i].bar < bufferSize) {
-                HighArrowBuffer[allSTH[i].bar] = allSTH[i].price;
+            int idx = FindBarByTime(timeArr, rates_total, allSTH[i].time);
+            if(idx == -1) { // fallback: use stored bar index if it fits in current array
+                if(allSTH[i].bar >= 0 && allSTH[i].bar < rates_total)
+                    idx = allSTH[i].bar;
+                if(InpShowDebug)
+                    Print("FindBarByTime failed for STH time ", allSTH[i].time, " using fallback bar ", allSTH[i].bar, " --> idx=", idx);
+            }
+            if(idx != -1 && idx >= 0 && idx < ArraySize(HighArrowBuffer)) {
+                HighArrowBuffer[idx] = allSTH[i].price;
+                if(InpShowDebug)
+                    Print("Displaying STH at index ", idx, " time ", allSTH[i].time, " price ", allSTH[i].price);
             }
         }
     }
-    
-    // Display STL arrows
+
+    // Display STL arrows using current time mapping (with fallback)
     for(int i = 0; i < stlCount; i++) {
         if(allSTL[i].isValid && (allSTL[i].isConfirmed || InpShowUnconfirmed)) {
-            int bufferSize = ArraySize(LowArrowBuffer);
-            if(allSTL[i].bar >= 0 && allSTL[i].bar < bufferSize) {
-                LowArrowBuffer[allSTL[i].bar] = allSTL[i].price;
+            int idx = FindBarByTime(timeArr, rates_total, allSTL[i].time);
+            if(idx == -1) {
+                if(allSTL[i].bar >= 0 && allSTL[i].bar < rates_total)
+                    idx = allSTL[i].bar;
+                if(InpShowDebug)
+                    Print("FindBarByTime failed for STL time ", allSTL[i].time, " using fallback bar ", allSTL[i].bar, " --> idx=", idx);
+            }
+            if(idx != -1 && idx >= 0 && idx < ArraySize(LowArrowBuffer)) {
+                LowArrowBuffer[idx] = allSTL[i].price;
+                if(InpShowDebug)
+                    Print("Displaying STL at index ", idx, " time ", allSTL[i].time, " price ", allSTL[i].price);
             }
         }
     }
-    
-    // Display ITH arrows
+
+    // ITH
     for(int i = 0; i < ithCount; i++) {
         if(allITH[i].isValid) {
-            int bufferSize = ArraySize(IntHighArrowBuffer);
-            if(allITH[i].bar >= 0 && allITH[i].bar < bufferSize) {
-                IntHighArrowBuffer[allITH[i].bar] = allITH[i].price;
+            int idx = FindBarByTime(timeArr, rates_total, allITH[i].time);
+            if(idx == -1 && allITH[i].bar >= 0 && allITH[i].bar < rates_total) idx = allITH[i].bar;
+            if(idx != -1 && idx >= 0 && idx < ArraySize(IntHighArrowBuffer)) {
+                IntHighArrowBuffer[idx] = allITH[i].price;
+                if(InpShowDebug) Print("Displaying ITH at idx ", idx, " price ", allITH[i].price);
             }
         }
     }
-    
-    // Display ITL arrows
+
+    // ITL
     for(int i = 0; i < itlCount; i++) {
         if(allITL[i].isValid) {
-            int bufferSize = ArraySize(IntLowArrowBuffer);
-            if(allITL[i].bar >= 0 && allITL[i].bar < bufferSize) {
-                IntLowArrowBuffer[allITL[i].bar] = allITL[i].price;
+            int idx = FindBarByTime(timeArr, rates_total, allITL[i].time);
+            if(idx == -1 && allITL[i].bar >= 0 && allITL[i].bar < rates_total) idx = allITL[i].bar;
+            if(idx != -1 && idx >= 0 && idx < ArraySize(IntLowArrowBuffer)) {
+                IntLowArrowBuffer[idx] = allITL[i].price;
+                if(InpShowDebug) Print("Displaying ITL at idx ", idx, " price ", allITL[i].price);
             }
         }
     }
+}
+
+//+------------------------------------------------------------------+
+//| Helper function to find current bar index by time               |
+//+------------------------------------------------------------------+
+int FindBarByTime(const datetime &timeArr[], int rates_total, datetime t)
+{
+    // ensure caller and this function use the same series orientation
+    // most callers set ArraySetAsSeries(..., true), but make local safe
+    // NOTE: ArraySetAsSeries modifies the array metadata; it's safe to call here.
+    // However we cannot call ArraySetAsSeries(timeArr, true) for const reference,
+    // so assume timeArr is series (set in OnCalculate). Use tolerant search.
+    for(int j = 0; j < rates_total; j++) {
+        if(timeArr[j] == t)
+            return j;
+    }
+    // If not found using forward scan (series=true), try reverse scan (series=false)
+    for(int j = rates_total - 1; j >= 0; j--) {
+        if(timeArr[j] == t)
+            return j;
+    }
+    return -1; // Not found
 }
